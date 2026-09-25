@@ -41,6 +41,8 @@ const CSS_TEXT = `
 .dsh-lse-status { display: flex; flex-direction: column; gap: 4px; padding: 12px 0 0; border-top: 0.5px solid var(--dsw-alias-border-l2); }
 .dsh-lse-status-line { margin: 0; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary); }
 .dsh-lse-status[data-phase='failed'] .dsh-lse-status-line { color: var(--dsw-alias-state-error-primary); }
+.dsh-lse-section { display: flex; flex-direction: column; min-width: 0; padding: 16px 0 0; border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.dsh-lse-section-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--dsw-alias-label-primary); }
 `
 
 /** 注入卡片样式一次; 重复调用是空操作. */

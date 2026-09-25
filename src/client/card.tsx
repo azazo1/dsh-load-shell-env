@@ -133,6 +133,35 @@ export function ShellEnvSettingsCard(props: ShellEnvSettingsCardProps): ReactNod
         {...overridden}
       />
       <StatusBlock t={t} state={state} onRefresh={props.refresh} />
+      <section className="dsh-lse-section" aria-labelledby="plugin-config-load-shell-env-terminal">
+        <h3 className="dsh-lse-section-title" id="plugin-config-load-shell-env-terminal">{t('terminalSection')}</h3>
+        <NumberField
+          id="plugin-config-load-shell-env-command-timeout"
+          label={t('commandTimeout')}
+          hint={t('commandTimeoutHint')}
+          text={state.timeoutMsText}
+          invalid={state.timeoutMsInvalid}
+          invalidLabel={t('numberInvalid')}
+          overridden={state.overridden.timeoutMs}
+          disabled={locked}
+          onEdit={props.editCommandTimeoutText}
+          onReset={() => { props.resetField('timeoutMsText') }}
+          {...overridden}
+        />
+        <NumberField
+          id="plugin-config-load-shell-env-max-output"
+          label={t('maxOutputBytes')}
+          hint={t('maxOutputBytesHint')}
+          text={state.maxOutputBytesText}
+          invalid={state.maxOutputBytesInvalid}
+          invalidLabel={t('numberInvalid')}
+          overridden={state.overridden.maxOutputBytes}
+          disabled={locked}
+          onEdit={props.editMaxOutputBytesText}
+          onReset={() => { props.resetField('maxOutputBytesText') }}
+          {...overridden}
+        />
+      </section>
     </SettingsForm>
   )
 }

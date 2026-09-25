@@ -16,8 +16,8 @@ import type {
   SettingsFormActions, SettingsFormPathOp, SettingsFormScope, SettingsFormShell,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  DEFAULT_ENV_TIMEOUT_MS, DEFAULT_IMPORT_NAMES, DSH_ENV_PREFIX, ENV_NAME_PATTERN, FIELD,
-  REFRESH_HEADER, REFRESH_PATH, STATUS_PATH,
+  DEFAULT_COMMAND_TIMEOUT_MS, DEFAULT_ENV_TIMEOUT_MS, DEFAULT_IMPORT_NAMES, DEFAULT_MAX_OUTPUT_BYTES,
+  DSH_ENV_PREFIX, ENV_NAME_PATTERN, FIELD, REFRESH_HEADER, REFRESH_PATH, STATUS_PATH,
 } from '../constants.ts'
 import { parseCustomEnv } from '../custom-env.ts'
 import type { StageConfig } from '../shared/config.ts'
@@ -31,6 +31,10 @@ export interface ShellEnvSettings {
   customEnv?: string
   envTimeoutMs?: number
   filterNoise?: boolean
+  /** executor: 单条命令的默认超时 (毫秒). */
+  timeoutMs?: number
+  /** executor: 每条流的输出上限 (字节). */
+  maxOutputBytes?: number
 }
 
 /** 流水线里的一行 (带渲染用的稳定 key). */
@@ -48,6 +52,8 @@ export interface ShellEnvOverrides {
   customEnv: boolean
   envTimeoutMs: boolean
   filterNoise: boolean
+  timeoutMs: boolean
+  maxOutputBytes: boolean
 }
 
 /** 卡片读到的整块状态. */
@@ -66,6 +72,14 @@ export interface ShellEnvCardState extends SettingsFormShell {
   customEnvError: string | undefined
   /** 超时字段不合法. */
   envTimeoutInvalid: boolean
+  /** executor: 单条命令默认超时的草稿文本. */
+  timeoutMsText: string
+  /** executor: 每条流输出上限的草稿文本. */
+  maxOutputBytesText: string
+  /** executor: 单条命令默认超时是否合法. */
+  timeoutMsInvalid: boolean
+  /** executor: 每条流输出上限是否合法. */
+  maxOutputBytesInvalid: boolean
   /** Host 侧的状态 (阶段, 时间, 变量名, 失败摘要). */
   status: ShellEnvStatus
   /** 手动刷新是否在飞. */
@@ -100,6 +114,10 @@ export interface ShellEnvCardFace extends SettingsFormActions {
   editTimeoutText(text: string): void
   /** 开关输出容错. */
   setFilterNoise(next: boolean): void
+  /** 改 executor 的单条命令超时草稿. */
+  editCommandTimeoutText(text: string): void
+  /** 改 executor 的单流输出上限草稿. */
+  editMaxOutputBytesText(text: string): void
   /** 读一次 Host 侧状态 (挂载时用). */
   refreshStatus(): void
   /** 手动触发一次环境读取. */
@@ -114,6 +132,8 @@ interface FieldValues {
   customEnv: string
   envTimeoutMsText: string
   filterNoise: boolean
+  timeoutMsText: string
+  maxOutputBytesText: string
 }
 
 /** 字段名. */
@@ -178,9 +198,13 @@ export class ShellEnvSettingsForm {
       editCustomEnv: (text) => { this.setField('customEnv', text) },
       editTimeoutText: (text) => { this.setField('envTimeoutMsText', text) },
       setFilterNoise: (next) => { this.setField('filterNoise', next) },
+      editCommandTimeoutText: (text) => { this.setField('timeoutMsText', text) },
+      editMaxOutputBytesText: (text) => { this.setField('maxOutputBytesText', text) },
       edit: (field, text) => {
         if (field === FIELD.customEnv) this.setField('customEnv', text)
         else if (field === FIELD.envTimeoutMs) this.setField('envTimeoutMsText', text)
+        else if (field === FIELD.timeoutMs) this.setField('timeoutMsText', text)
+        else if (field === FIELD.maxOutputBytes) this.setField('maxOutputBytesText', text)
       },
       resetField: (field) => {
         if (isFieldName(field)) this.unsetField(field)
@@ -319,6 +343,8 @@ export class ShellEnvSettingsForm {
       case 'customEnv': return (value?.customEnv ?? '') as FieldValues[K]
       case 'envTimeoutMsText': return String(value?.envTimeoutMs ?? DEFAULT_ENV_TIMEOUT_MS) as FieldValues[K]
       case 'filterNoise': return (value?.filterNoise ?? false) as FieldValues[K]
+      case 'timeoutMsText': return String(value?.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS) as FieldValues[K]
+      case 'maxOutputBytesText': return String(value?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES) as FieldValues[K]
     }
     /* v8 ignore next -- 上面的 case 覆盖了 FieldName 的全部取值 */
     throw new Error(`unknown field ${String(name)}`)
@@ -334,6 +360,8 @@ export class ShellEnvSettingsForm {
       case 'customEnv': return (base?.customEnv ?? '') as FieldValues[K]
       case 'envTimeoutMsText': return String(base?.envTimeoutMs ?? DEFAULT_ENV_TIMEOUT_MS) as FieldValues[K]
       case 'filterNoise': return (base?.filterNoise ?? false) as FieldValues[K]
+      case 'timeoutMsText': return String(base?.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS) as FieldValues[K]
+      case 'maxOutputBytesText': return String(base?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES) as FieldValues[K]
     }
     /* v8 ignore next -- 上面的 case 覆盖了 FieldName 的全部取值 */
     throw new Error(`unknown field ${String(name)}`)
@@ -343,7 +371,7 @@ export class ShellEnvSettingsForm {
   private userLayerHas(name: FieldName): boolean {
     const user = this.scope.getSnapshot().user
     if (user === null || typeof user !== 'object') return false
-    const key = name === 'envTimeoutMsText' ? FIELD.envTimeoutMs : name
+    const key = configPathOf(name)
     return Object.hasOwn(user, key)
   }
 
@@ -366,13 +394,17 @@ export class ShellEnvSettingsForm {
     const timeoutText = this.field('envTimeoutMsText')
     const timeout = Number(timeoutText.trim())
     const envTimeoutInvalid = timeoutText.trim() === '' || !Number.isInteger(timeout) || timeout <= 0
+    const commandTimeoutText = this.field('timeoutMsText')
+    const commandTimeoutInvalid = positiveInteger(commandTimeoutText) === undefined
+    const maxOutputText = this.field('maxOutputBytesText')
+    const maxOutputInvalid = positiveInteger(maxOutputText) === undefined
     const stagesInvalid = stages.some(stage => stage.enabled !== false && stage.command.trim() === '')
     const customEnvError = customEnvProblem(customEnv)
     return {
       available: snapshot.status === 'ready',
       writable: snapshot.writable,
       dirty: this.pendingOps().length > 0,
-      invalid: envTimeoutInvalid || stagesInvalid || customEnvError !== undefined,
+      invalid: envTimeoutInvalid || commandTimeoutInvalid || maxOutputInvalid || stagesInvalid || customEnvError !== undefined,
       saving: this.saving,
       failed: this.failed,
       enabled: this.field('enabled'),
@@ -385,6 +417,8 @@ export class ShellEnvSettingsForm {
       customEnv,
       envTimeoutMsText: timeoutText,
       filterNoise: this.field('filterNoise'),
+      timeoutMsText: commandTimeoutText,
+      maxOutputBytesText: maxOutputText,
       overridden: {
         enabled: this.userLayerHas('enabled'),
         stages: this.userLayerHas('stages'),
@@ -392,10 +426,14 @@ export class ShellEnvSettingsForm {
         customEnv: this.userLayerHas('customEnv'),
         envTimeoutMs: this.userLayerHas('envTimeoutMsText'),
         filterNoise: this.userLayerHas('filterNoise'),
+        timeoutMs: this.userLayerHas('timeoutMsText'),
+        maxOutputBytes: this.userLayerHas('maxOutputBytesText'),
       },
       stagesInvalid,
       customEnvError,
       envTimeoutInvalid,
+      timeoutMsInvalid: commandTimeoutInvalid,
+      maxOutputBytesInvalid: maxOutputInvalid,
       status: this.status,
       refreshing: this.refreshing,
       refreshError: this.refreshError,
@@ -411,18 +449,18 @@ export class ShellEnvSettingsForm {
     }
     for (const name of this.unsets) {
       if (!this.userLayerHas(name)) continue
-      ops.push({ op: 'unset', path: [name === 'envTimeoutMsText' ? FIELD.envTimeoutMs : name] })
+      ops.push({ op: 'unset', path: [configPathOf(name)] })
     }
     return ops
   }
 
   /** 一个显式写入的字段落成什么操作; 没有实际变化时是 undefined. */
   private setOp(name: FieldName, value: FieldValues[FieldName]): SettingsFormPathOp | undefined {
-    const path = name === 'envTimeoutMsText' ? FIELD.envTimeoutMs : name
-    if (name === 'envTimeoutMsText') {
-      const parsed = Number(String(value).trim())
-      if (!Number.isInteger(parsed) || parsed <= 0) return undefined
-      return parsed === Number(this.effectiveValue('envTimeoutMsText')) ? undefined : { op: 'set', path: [path], value: parsed }
+    const path = configPathOf(name)
+    if (name === 'envTimeoutMsText' || name === 'timeoutMsText' || name === 'maxOutputBytesText') {
+      const parsed = positiveInteger(String(value))
+      if (parsed === undefined) return undefined
+      return parsed === Number(this.effectiveValue(name)) ? undefined : { op: 'set', path: [path], value: parsed }
     }
     if (name === 'customEnv') {
       const text = String(value)
@@ -449,6 +487,23 @@ export class ShellEnvSettingsForm {
 function isFieldName(field: string): field is FieldName {
   return field === 'enabled' || field === 'stages' || field === 'importNames'
     || field === 'customEnv' || field === 'envTimeoutMsText' || field === 'filterNoise'
+    || field === 'timeoutMsText' || field === 'maxOutputBytesText'
+}
+
+/** 草稿字段名对应的 profile patch 路径. */
+function configPathOf(name: FieldName): string {
+  switch (name) {
+    case 'envTimeoutMsText': return FIELD.envTimeoutMs
+    case 'timeoutMsText': return FIELD.timeoutMs
+    case 'maxOutputBytesText': return FIELD.maxOutputBytes
+    default: return name
+  }
+}
+
+/** 文本草稿是否是正整数; 不是就返回 undefined. */
+function positiveInteger(text: string): number | undefined {
+  const parsed = Number(text.trim())
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
 }
 
 /** 自定义 env 的问题描述; 没问题时是 undefined. */

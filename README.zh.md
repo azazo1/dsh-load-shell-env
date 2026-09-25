@@ -135,12 +135,14 @@ DROP=
 
 `ctx.shell` 是**单实现**服务, 一个上下文里只能有一个 backend, 所以插件必须让内置的
 `bash-sandbox` 行停下来, 再插入自己那一行 (插件自带的 bundle patch 就是干这个的).
-副作用是: 官方那张 shell 设置卡片 (`packages/client/ui-settings-shell`) 的显示条件是
-"`bash-sandbox` 或 `pwsh-sandbox` 被服务", 两个都停掉之后它会**自己退场**, 那六个
-执行旋钮 (命令超时, 输出上限等) 也就没有界面入口了.
+副作用是: 官方那张 shell 设置卡片 ("设置 -> 插件 -> 官方" 里的 **终端**) 的显示条件是
+"`bash-sandbox` 或 `pwsh-sandbox` 被服务", 两个都停掉之后它会**自己退场**.
 
-本插件**没有**把那些入口搬进自己的卡片 (它只管环境同步). 需要调这些值的部署直接写
-profile patch, 字段与原来的 `bash-sandbox` 行同义:
+它原来带的那两个控件 ("命令超时 (毫秒)" `timeoutMs` 与 "单流输出上限 (字节)" `maxOutputBytes`)
+已经搬到本插件配置页最底部的 **"终端" 分区**里, 文案与官方一致; "恢复默认" 仍然是把用户层的值
+清掉、回落到组合层 (本插件 bundle patch 里的 `timeoutMs: 60000` 与 schema 默认的
+`maxOutputBytes: 64000`). 其余四个 executor 字段 (`cwd`, `maxTimeoutMs`, `maxSpillBytes`,
+`graceMs`) 从来不在界面上, 只能写 profile patch:
 
 ```yaml
 - id: load-shell-env

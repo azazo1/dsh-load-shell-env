@@ -33,6 +33,12 @@ export const MAX_REQUEST_BODY_BYTES = 4096
 /** 每一级 stage 的默认超时 (毫秒). */
 export const DEFAULT_ENV_TIMEOUT_MS = 10_000
 
+/** executor 自己的 `timeoutMs` 的 schema 默认值; 只用于界面上的兜底显示 (组合层通常已经给了值). */
+export const DEFAULT_COMMAND_TIMEOUT_MS = 120_000
+
+/** executor 自己的 `maxOutputBytes` 的 schema 默认值; 同上. */
+export const DEFAULT_MAX_OUTPUT_BYTES = 64_000
+
 /** 导入名单的默认值: 只把 PATH 带进子进程. */
 export const DEFAULT_IMPORT_NAMES: readonly string[] = ['PATH']
 
@@ -59,6 +65,9 @@ export const FIELD = {
   customEnv: 'customEnv',
   envTimeoutMs: 'envTimeoutMs',
   filterNoise: 'filterNoise',
+  // 下面两个是 executor 自己的旋钮, 由本插件的配置页代理显示.
+  timeoutMs: 'timeoutMs',
+  maxOutputBytes: 'maxOutputBytes',
 } as const
 
 /**

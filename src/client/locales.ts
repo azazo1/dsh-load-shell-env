@@ -37,6 +37,12 @@ export type ShellEnvLocaleKey =
   | 'envTimeoutInvalid'
   | 'filterNoise'
   | 'filterNoiseHint'
+  | 'terminalSection'
+  | 'commandTimeout'
+  | 'commandTimeoutHint'
+  | 'maxOutputBytes'
+  | 'maxOutputBytesHint'
+  | 'numberInvalid'
   | 'statusTitle'
   | 'statusDisabled'
   | 'statusIdle'
@@ -96,6 +102,12 @@ export const zh: Record<ShellEnvLocaleKey, string> = {
   envTimeoutInvalid: '请填一个正整数毫秒值.',
   filterNoise: '输出容错',
   filterNoiseHint: '遇到不符合 KEY=VALUE 约定的输出段时, 丢弃它并继续 (状态行会报告丢了几段), 而不是让这一级失败. 它只能救回"噪声黏在变量名前面"这种形态; 噪声如果糊进了值里, 任何解析器都看不出来, 只能从源头把消息改成写 stderr.',
+  terminalSection: '终端',
+  commandTimeout: '命令超时 (毫秒)',
+  commandTimeoutHint: '单条命令允许运行多久, 超时即终止.',
+  maxOutputBytes: '单流输出上限 (字节)',
+  maxOutputBytesHint: '超出部分会转存到临时文件, 而不是被丢弃.',
+  numberInvalid: '请填一个正整数.',
   statusTitle: '状态',
   statusDisabled: '未启用',
   statusIdle: '尚未读取',
@@ -149,6 +161,12 @@ export const en: Record<ShellEnvLocaleKey, string> = {
   envTimeoutInvalid: 'Enter a positive whole number of milliseconds.',
   filterNoise: 'Tolerate output noise',
   filterNoiseHint: 'Drop output segments that do not follow the KEY=VALUE convention and keep going (the status row reports how many were dropped) instead of failing the stage. It only recovers the "noise glued in front of a variable name" shape; noise written into a value is invisible to any parser, so fix the message at its source instead (write it to stderr).',
+  terminalSection: 'Shell',
+  commandTimeout: 'Command timeout (ms)',
+  commandTimeoutHint: 'How long one command may run before it is terminated.',
+  maxOutputBytes: 'Output cap per stream (bytes)',
+  maxOutputBytesHint: 'Output beyond this spills to a temporary file rather than being lost.',
+  numberInvalid: 'Enter a positive whole number.',
   statusTitle: 'Status',
   statusDisabled: 'Disabled',
   statusIdle: 'Not read yet',

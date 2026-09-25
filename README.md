@@ -163,12 +163,18 @@ knowing.
 
 `ctx.shell` is a **single-implementation** service, so the plugin has to stop the stock
 `bash-sandbox` row and insert its own (that is what the bundled `cordis.patch.yml` does).
-One consequence: the official shell settings card (`packages/client/ui-settings-shell`)
-renders only while `bash-sandbox` or `pwsh-sandbox` is served, so once both are stopped it
-**retires itself** and its six execution knobs lose their UI entry point.
+One consequence: the official shell settings card (the **Terminal** entry under
+"Settings -> Plugins -> Official") renders only while `bash-sandbox` or `pwsh-sandbox` is
+served, so once both are stopped it **retires itself**.
 
-This plugin deliberately does **not** move those controls onto its own card (it only does
-environment sync). Deployments that need to tune them write a profile patch; the fields mean
+The two controls it used to carry ("Command timeout (ms)" `timeoutMs` and "Output cap per
+stream (bytes)" `maxOutputBytes`) now live in a **"Shell" section at the bottom of this
+plugin's card**, with the same wording; "Reset" still clears the user layer and falls back to
+the composition layer (this plugin's bundle patch sets `timeoutMs: 60000`, and the schema
+default for `maxOutputBytes` is `64000`). The other four executor fields (`cwd`,
+`maxTimeoutMs`, `maxSpillBytes`, `graceMs`) were never in the UI and remain patch-only:
+
+Deployments can also set every executor field through a profile patch; the fields mean
 exactly what they meant on the stock row:
 
 ```yaml
