@@ -1,0 +1,6 @@
+node_modules/
+.tmp/
+*.tsbuildinfo
+dist/
+*.tgz
+.agent

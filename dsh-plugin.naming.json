@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "policy": "dsh-plugin-naming/v1",
+  "plugin": {
+    "namespace": "azazo1",
+    "name": "load-shell-env",
+    "coordinate": "azazo1/load-shell-env",
+    "packageName": "dsh-load-shell-env"
+  },
+  "names": {
+    "pluginNames": [
+      "load-shell-env"
+    ],
+    "loaderIds": [
+      "load-shell-env"
+    ],
+    "services": [],
+    "tools": [],
+    "commands": [],
+    "skills": [],
+    "skillProviders": [],
+    "events": [],
+    "settingsNamespaces": [
+      "load-shell-env"
+    ],
+    "routes": [
+      { "kind": "exact", "path": "/api/plugins/dsh-load-shell-env/status" },
+      { "kind": "exact", "path": "/api/plugins/dsh-load-shell-env/refresh" }
+    ]
+  }
+}

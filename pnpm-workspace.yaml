@@ -1,0 +1,13 @@
+packages:
+  - .
+
+allowBuilds:
+  # 只为 devDependencies 里的组合测试依赖 (subprocess-local / koffi / node-pty) 放行构建脚本.
+  '@deepseek-ai/dsh-subprocess-local': true
+  esbuild: true
+  koffi: true
+  node-pty: true
+
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/*'

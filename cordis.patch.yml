@@ -1,0 +1,26 @@
+# dsh-load-shell-env bundle patch
+#
+# 本文件是发布包 `dsh.bundle.patch` 指向的那一层: 用官方 CLI 安装
+# (`dsh plugin --profile <name> add dsh-load-shell-env`) 之后, profile 的
+# bundle 栈里多出这一包, 启动时把本 patch 叠在 base bundle 之上.
+#
+# 为什么要停掉 `bash-sandbox`: `ctx.shell` 是单实现服务 (再注册一个会抛
+# "service ... has been registered"), 插件无法包住已有 backend, 只能让内置
+# 那行停下来, 再插入自己的行. `name` 在 patch 里是断言 (不匹配就跳过并告警),
+# 所以必须停用 + 插入, 而不是改内置行的 name.
+#
+# `timeoutMs: 60000` 与 base bundle 里 `bash-sandbox` 行的取值一致: 停用那一行
+# 会连带丢掉它的 config, 不在这里重述就会让默认命令超时从 60s 变成 schema 的 120s.
+# 整行 config 在 patch 层是整体替换, 需要改这些旋钮的部署在更靠后的 patch 里
+# 按 id `load-shell-env` 重述全部想保留的字段 (见 README).
+- id: bash-sandbox
+  disabled: true
+- insert:
+    - id: load-shell-env
+      name: dsh-load-shell-env
+      # Windows 上 base bundle 用 `pwsh-sandbox` 占着同一个 ctx.shell 服务,
+      # 插入自己的行会让两个 provider 抢同一个服务, 结果是 Host 启动失败.
+      # 所以 Windows 上这一行不生效 (配置卡片也因 whileServed 不渲染).
+      disabled: !!js process.platform === 'win32'
+      config:
+        timeoutMs: 60000
