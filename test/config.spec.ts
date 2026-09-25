@@ -17,6 +17,7 @@ function configOf(overrides: Partial<{
   customEnv: string
   envTimeoutMs: number
   filterNoise: boolean
+  terminalEnv: boolean
 }> = {}): ShellEnvConfig {
   return {
     cwd: ref<string | undefined>(undefined),
@@ -31,6 +32,7 @@ function configOf(overrides: Partial<{
     customEnv: ref(overrides.customEnv ?? ''),
     envTimeoutMs: ref(overrides.envTimeoutMs ?? DEFAULT_ENV_TIMEOUT_MS),
     filterNoise: ref(overrides.filterNoise ?? false),
+    terminalEnv: ref(overrides.terminalEnv ?? true),
   }
 }
 
@@ -58,6 +60,9 @@ describe('Config schema', () => {
     // 输出容错默认关闭: 严格模式是默认语义.
     expect(Config.dict?.[FIELD.filterNoise]?.meta.default).toBe(false)
     expect(Config.dict?.[FIELD.filterNoise]?.meta.volatile).toBe(true)
+    // 终端继承默认打开: 总开关打开时, 终端进程与命令用同一份注入层.
+    expect(Config.dict?.[FIELD.terminalEnv]?.meta.default).toBe(true)
+    expect(Config.dict?.[FIELD.terminalEnv]?.meta.volatile).toBe(true)
   })
 })
 

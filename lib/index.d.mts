@@ -1,6 +1,7 @@
 import { SandboxBashExecutor } from "@deepseek-ai/dsh-bash-sandbox";
 import { Config as Config$1 } from "@deepseek-ai/dsh-bash-local";
 import z from "@deepseek-ai/schemastery";
+import "@deepseek-ai/dsh-subprocess";
 import { Context, Volatile } from "@deepseek-ai/cordis";
 import { ShellExecRequest, ShellExecSpec } from "@deepseek-ai/dsh-shell";
 //#region src/shared/config.d.ts
@@ -17,7 +18,7 @@ interface StageConfig {
 }
 //#endregion
 //#region src/config.d.ts
-/** 插件的完整配置: executor 的六个旋钮 + 环境同步自己的五个字段. */
+/** 插件的完整配置: executor 的六个旋钮 + 环境同步自己的六个字段. */
 interface ShellEnvConfig extends Config$1 {
   /** 总开关; 关闭时插件不执行任何命令, 也不注入任何东西. */
   enabled: Volatile<boolean>;
@@ -31,6 +32,8 @@ interface ShellEnvConfig extends Config$1 {
   envTimeoutMs: Volatile<number>;
   /** 输出里不合约定的段是否按噪声丢弃 (默认关闭, 即严格模式). */
   filterNoise: Volatile<boolean>;
+  /** 是否把注入层也交给终端进程 (界面内置终端与 agent 的 terminal 工具). */
+  terminalEnv: Volatile<boolean>;
 }
 /**
  * 插件配置 schema.
@@ -82,6 +85,13 @@ interface ShellEnvFailure {
   /** 脱敏后的一句话摘要. */
   message: string;
 }
+/** 终端进程继承的当前状态. */
+interface ShellEnvTerminalStatus {
+  /** 终端继承开关的当前值 (来自配置). */
+  enabled: boolean;
+  /** 包装是否装上了; `false` 表示这个组合里终端继承不可用. */
+  hooked: boolean;
+}
 /**
  * 配置页读到的状态.
  *
@@ -104,6 +114,8 @@ interface ShellEnvStatus {
   skippedSegments?: number;
   /** 最近一次失败的原因. */
   error?: ShellEnvFailure;
+  /** 终端继承的状态; 由 Host 半区附加, 快照自身不关心终端. */
+  terminal?: ShellEnvTerminalStatus;
 }
 //#endregion
 //#region src/routes.d.ts
@@ -202,6 +214,22 @@ interface ShellEnvStoreOptions {
 /** 手动刷新的触发来源, 只进日志. */
 type ShellEnvTrigger = 'boot' | 'config' | 'manual';
 //#endregion
+//#region src/terminal-env.d.ts
+/** 终端继承的开关与注入层来源; 两者都在每次 spawn 时重新读, 改动即时生效. */
+interface TerminalEnvSource {
+  /** 终端继承开关的当前值. */
+  enabled(): boolean;
+  /** 当前注入层; 值为 `undefined` 的条目是命令侧的删除语义 (见模块注释). */
+  injection(): Record<string, string | undefined>;
+}
+/** 一个已安装的终端环境包装. */
+interface TerminalEnvHook {
+  /** 包装是否真的装上了; `false` 表示这个组合里终端继承不可用. */
+  readonly hooked: boolean;
+  /** 卸载并恢复原方法; 重复调用是空操作. */
+  dispose(): void;
+}
+//#endregion
 //#region src/index.d.ts
 /** 插件模块名 (也是 Loader row id 去前缀后的写法). */
 export declare const name = "load-shell-env";
@@ -221,6 +249,8 @@ export declare class ShellEnvExecutor extends SandboxBashExecutor {
    */
   readonly shellEnv: ShellEnvRouteHost;
   private readonly store;
+  /** 终端进程上的环境包装; 卸载插件时恢复 provider 的原方法. */
+  private readonly terminalHook;
   /**
    * @param ctx - 宿主插件上下文.
    * @param config - schema 解析后的活动配置 (父类只认识 executor 那六个旋钮).
@@ -239,5 +269,5 @@ export declare class ShellEnvExecutor extends SandboxBashExecutor {
   private syncConfig;
 }
 //#endregion
-export { type ShellEnvConfig, ShellEnvExecutor as default, type ShellEnvFailure, type ShellEnvPhase, type ShellEnvReadConfig, type ShellEnvStatus, type ShellEnvStoreOptions, type ShellEnvTrigger, type StageConfig };
+export { type ShellEnvConfig, ShellEnvExecutor as default, type ShellEnvFailure, type ShellEnvPhase, type ShellEnvReadConfig, type ShellEnvStatus, type ShellEnvStoreOptions, type ShellEnvTerminalStatus, type ShellEnvTrigger, type StageConfig, type TerminalEnvHook, type TerminalEnvSource };
 //# sourceMappingURL=index.d.mts.map

@@ -30,6 +30,7 @@ function fakeScope(options: {
       customEnv: '',
       envTimeoutMs: 10_000,
       filterNoise: false,
+      terminalEnv: true,
       timeoutMs: 60_000,
       maxOutputBytes: 64_000,
       ...options.value ?? {},
@@ -113,5 +114,28 @@ describe('ShellEnvSettingsForm 的 executor 旋钮', () => {
     face.editCommandTimeoutText('30000')
     await form.save()
     expect(mutate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ShellEnvSettingsForm 的终端继承开关', () => {
+  it('默认开启, 关掉后落成 set 操作', async () => {
+    const { form, mutate } = fakeScope()
+    const face = form.inject()
+    expect(face.hooks.shellEnvCard.getSnapshot().terminalEnv).toBe(true)
+    face.setTerminalEnv(false)
+    await form.save()
+    expect(mutate.mock.calls[0]?.[0]).toEqual([{ op: 'set', path: ['terminalEnv'], value: false }])
+  })
+
+  it('用户层覆盖过时算已覆盖, 恢复默认落成 unset', async () => {
+    const { form, mutate } = fakeScope({ value: { terminalEnv: false }, user: { terminalEnv: false } })
+    const face = form.inject()
+    expect(face.hooks.shellEnvCard.getSnapshot()).toMatchObject({
+      terminalEnv: false,
+      overridden: { terminalEnv: true },
+    })
+    face.resetField('terminalEnv')
+    await form.save()
+    expect(mutate.mock.calls[0]?.[0]).toEqual([{ op: 'unset', path: ['terminalEnv'] }])
   })
 })

@@ -29,6 +29,14 @@ export interface ShellEnvFailure {
   message: string
 }
 
+/** 终端进程继承的当前状态. */
+export interface ShellEnvTerminalStatus {
+  /** 终端继承开关的当前值 (来自配置). */
+  enabled: boolean
+  /** 包装是否装上了; `false` 表示这个组合里终端继承不可用. */
+  hooked: boolean
+}
+
 /**
  * 配置页读到的状态.
  *
@@ -51,6 +59,8 @@ export interface ShellEnvStatus {
   skippedSegments?: number
   /** 最近一次失败的原因. */
   error?: ShellEnvFailure
+  /** 终端继承的状态; 由 Host 半区附加, 快照自身不关心终端. */
+  terminal?: ShellEnvTerminalStatus
 }
 
 /** 一个尚未读过任何东西的初始状态. */

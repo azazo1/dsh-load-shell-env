@@ -6,6 +6,9 @@
  * 拒绝分类, 只在 `resolve()` 里把白名单快照与自定义 env 合并进 `spec.env`;
  * argv 仍然是 `bash -c <command>`, 命令文本一个字符都不改.
  *
+ * 终端进程 (界面内置终端与 agent 的 terminal 工具) 不经过 `ctx.shell`, 所以另有一
+ * 层: 加载期间包装 `ctx.subprocess.spawnTerminal`, 卸载时恢复, 详见 ./terminal-env.
+ *
  * 环境读取本身发生在 Host 进程 (不受 workspace-write 约束), 默认关闭, 只在
  * user 打开开关时执行 user 自己的 shell 配置.
  * @module dsh-load-shell-env
@@ -21,12 +24,14 @@ import { PLUGIN_NAME } from './constants.ts'
 import { readShellEnvConfig } from './read-config.ts'
 import { mountShellEnvRoutes, type ShellEnvRouteHost } from './routes.ts'
 import { ShellEnvStore } from './shell-env-store.ts'
+import { installTerminalEnvHook, type TerminalEnvHook } from './terminal-env.ts'
 
 export { Config, ShellEnvConfigError, validateShellEnvConfig } from './config.ts'
 export type { ShellEnvConfig, StageConfig } from './config.ts'
 export { PACKAGE_NAME, PLUGIN_NAME, REFRESH_PATH, STATUS_PATH } from './constants.ts'
-export type { ShellEnvStatus, ShellEnvPhase, ShellEnvFailure } from './shared/status.ts'
+export type { ShellEnvStatus, ShellEnvPhase, ShellEnvFailure, ShellEnvTerminalStatus } from './shared/status.ts'
 export type { ShellEnvReadConfig, ShellEnvStoreOptions, ShellEnvTrigger } from './shell-env-store.ts'
+export type { TerminalEnvHook, TerminalEnvSource } from './terminal-env.ts'
 
 /** 插件模块名 (也是 Loader row id 去前缀后的写法). */
 export const name = PLUGIN_NAME
@@ -51,6 +56,9 @@ export class ShellEnvExecutor extends SandboxBashExecutor {
 
   private readonly store: ShellEnvStore
 
+  /** 终端进程上的环境包装; 卸载插件时恢复 provider 的原方法. */
+  private readonly terminalHook: TerminalEnvHook
+
   /**
    * @param ctx - 宿主插件上下文.
    * @param config - schema 解析后的活动配置 (父类只认识 executor 那六个旋钮).
@@ -74,8 +82,22 @@ export class ShellEnvExecutor extends SandboxBashExecutor {
       ctx.logger.warn(`dsh-load-shell-env: disabled with an unusable configuration, staying inert: ${message}`)
     }
     this.store.applyConfig(readShellEnvConfig(config))
+    // 终端 (界面内置终端与 agent 的 terminal 工具) 不走 ctx.shell, 只有包装 provider
+    // 的 spawnTerminal 才能把注入层交给它们; 开关与注入层都在每次 spawn 时重读.
+    this.terminalHook = installTerminalEnvHook(
+      ctx.subprocess,
+      {
+        enabled: () => config.terminalEnv.get(),
+        injection: () => this.store.injectedEnv(),
+      },
+      { warn: message => { ctx.logger.warn(message) } },
+    )
+    ctx.effect(() => () => { this.terminalHook.dispose() }, 'dsh-load-shell-env: terminal env hook')
     this.shellEnv = {
-      status: () => this.store.status(),
+      status: () => ({
+        ...this.store.status(),
+        terminal: { enabled: config.terminalEnv.get(), hooked: this.terminalHook.hooked },
+      }),
       refresh: () => this.store.refresh('manual'),
     }
     // 配置保存走 volatile 更新 (不重挂载), 由 store 决定清空还是重读.

@@ -8,7 +8,8 @@ macOS 上从 Finder 或 Dock 启动的 DSH 桌面版继承的是 launchd 给 GUI
 `PATH` 通常只有 `/usr/bin:/bin:/usr/sbin:/sbin`, 于是 `node`, `pnpm`, `uv`, `cargo`,
 `rg`, `brew` 在 agent 的命令里全都找不到, 而你在集成终端里看到的 `PATH` 是正常的
 (那是 `fish -i` 自己读配置的结果). 这个插件让你把那份环境读出来, 注入到 agent 每条
-bash 命令里, **不改命令文本**: argv 仍然是 `bash -c <command>`.
+bash 命令里, **不改命令文本**: argv 仍然是 `bash -c <command>`; 同一份环境也可以交给
+终端进程 (界面内置终端与 agent 的 terminal 工具), 见 "终端继承".
 
 ## 它做什么
 
@@ -17,11 +18,12 @@ bash 命令里, **不改命令文本**: argv 仍然是 `bash -c <command>`.
   `KEY=VALUE` (最典型的一级就是 `fish -l -i -c 'env -0'`), 逐级累积.
 - 一份**导入名单**: 只把点名的变量注入子进程, 默认只有 `PATH`.
 - 一份**自定义 env**: `.env` 风格的手写覆盖层, 支持 `$VAR` / `${VAR}` 展开与删除.
+- 一个**终端继承开关**: 打开后, 界面右侧栏的内置终端与 agent 的 terminal 工具也拿到同一份注入层.
 - 配置页上的**状态行与手动刷新**, 带最近一次读取的时间, 耗时, 注入的变量名与失败原因.
 
 ## 它不做什么
 
-- 不管集成终端 (它本来就跑你的 shell, 不需要修).
+- 不替终端进程写配置: 终端继承只把变量交给它, 终端里跑的仍然是你自己的 shell 与它自己的配置.
 - 不改 Agent 循环, 不改工具 schema, 不改系统提示词, 也没有给模型准备任何 tool.
 - 不落盘任何环境值: 快照只在内存, HTTP 接口只返回状态与变量名.
 - 不接管 MCP stdio server 或其它插件自己 spawn 的进程 (它们不走 `ctx.shell`).
@@ -56,6 +58,8 @@ bundle patch 要参与启动时的组合.
       PATH=$PATH:$HOME/.local/bin
       GOPATH=$HOME/go
     envTimeoutMs: 10000
+    # 终端进程 (内置终端与 agent 的 terminal 工具) 是否也继承这一层
+    terminalEnv: true
     # 以下是 executor 自己的旋钮, 与原 bash-sandbox 行同义
     timeoutMs: 60000
 ```
@@ -68,6 +72,7 @@ bundle patch 要参与启动时的组合.
 | `customEnv` | `''` | `.env` 风格文本, 排在流水线之后. |
 | `envTimeoutMs` | `10000` | **每一级**各自的超时 (毫秒). |
 | `filterNoise` | `false` | 输出容错: 丢弃不符合约定的输出段并继续 (状态行报告丢了几段), 而不是让该级失败. |
+| `terminalEnv` | `true` | 把注入层也交给终端进程 (内置终端与 agent 的 terminal 工具), 详见"终端继承". |
 
 ### 流水线与累积语义
 
@@ -131,6 +136,38 @@ DROP=
 写进名单或自定义 env, 就会盖掉 dsh 为工具输出准备的取值 (可能让命令挂住或输出变脏).
 插件不拦你, 但知道这回事有好处.
 
+### 终端继承
+
+`terminalEnv` (默认打开) 决定要不要把上面那一层也交给终端进程, 覆盖两处:
+
+- 界面右侧栏的**内置终端** (也就是 desktop 应用里那个终端面板);
+- agent 的 **terminal 工具** 起的持久 shell (`terminal_open` / `terminal_send` / ...,
+  只在组合里启用了 `tool-terminal` 与 `terminal-bash` 时才存在).
+
+这两条链都不走 `ctx.shell`: 它们直接调 `ctx.subprocess.spawnTerminal()`, 环境只有 provider
+的清理后继承环境 (外加一个 `DSH_SESSION_ID`). 所以插件在加载期间包装 provider 实例上的
+`spawnTerminal`, 把同一份注入层合并进每次终端 spawn 的 `spec.env`, 卸载时恢复原方法.
+
+合并顺序与命令侧一致: 注入层压过终端自己设置的变量. 所以**不要把终端协议变量写进导入名单
+或自定义 env**:
+
+| 不要注入 | 后果 |
+| --- | --- |
+| `PROMPT_COMMAND` | `terminal-bash` 靠它判断命令是否结束, 被盖掉之后 terminal 工具会一直等不到提示符 |
+| `PS1`, `TERM` | 提示符与终端类型, 改了会让输出渲染与就绪检测错乱 |
+| `PAGER`, `GIT_PAGER` | dsh 把它们设成 `cat` 就是为了不让分页器把终端卡住 |
+
+另外两条差异:
+
+- 自定义 env 里的删除写法 (`KEY=`) 对终端**不生效**: provider 的终端 spec 只接受字符串值,
+  传 `undefined` 在 Windows 的 ConPTY 路径上没有删除语义, 插件直接跳过这些条目.
+- 如果这个组合的 provider 不接受包装 (实例方法不可写), 插件只在日志里告警, 状态行会显示
+  "终端继承没有生效", 终端回到继承环境 —— 不会假装成功.
+
+包装的是插件所在上下文解析到的那个 provider 实例. 远端执行世界 (自己组合了
+`subprocess-ssh` 的 profile) 有它自己的 provider, 不在这一层里: 把本机 shell 的环境塞进
+远端终端没有意义.
+
 ## executor 旋钮与官方 shell 卡片
 
 `ctx.shell` 是**单实现**服务, 一个上下文里只能有一个 backend, 所以插件必须让内置的
@@ -139,7 +176,7 @@ DROP=
 "`bash-sandbox` 或 `pwsh-sandbox` 被服务", 两个都停掉之后它会**自己退场**.
 
 它原来带的那两个控件 ("命令超时 (毫秒)" `timeoutMs` 与 "单流输出上限 (字节)" `maxOutputBytes`)
-已经搬到本插件配置页最底部的 **"终端" 分区**里, 文案与官方一致; "恢复默认" 仍然是把用户层的值
+已经搬到本插件配置页最底部的 **"命令执行" 分区**里, 文案与官方一致; "恢复默认" 仍然是把用户层的值
 清掉、回落到组合层 (本插件 bundle patch 里的 `timeoutMs: 60000` 与 schema 默认的
 `maxOutputBytes: 64000`). 其余四个 executor 字段 (`cwd`, `maxTimeoutMs`, `maxSpillBytes`,
 `graceMs`) 从来不在界面上, 只能写 profile patch:
@@ -170,6 +207,10 @@ DROP=
   "装了但不生效", 配置卡片也不会出现.
 - **读取发生在 Host 进程**. 打开开关后执行的是你自己的 shell 配置, 不受 workspace-write
   约束 (它本来也不该受: 那是 agent 命令的边界). 这是你显式开启后的预期行为.
+- **终端进程走运行期包装**. DSH 没给"终端用什么环境变量"留扩展点 (`ctx.subprocess` 是
+  单实现服务, 而终端 spec 由调用方组装), 所以插件加载时把 `ctx.subprocess.spawnTerminal`
+  换成自己的包装, 卸载时恢复. 依赖的是公开契约 (`spawnTerminal(spec)` 的 `spec.env` 是
+  "provider 清理之后合并的显式条目"), 上游改签名时类型检查会先报错, 不会静默失效.
 
 ## 排错
 
@@ -188,6 +229,11 @@ DROP=
   把命令写成绝对路径, 例如 `/usr/local/bin/fish -l -i -c 'env -0'`.
 - **状态行 failed, 摘要里出现 `is not KEY=VALUE` 或 `invalid variable name`**: 读取时 stdout
   混进了别的东西 (见"噪声"一段). 先把那条消息改成写 stderr; 改不动来源就打开"输出容错"并保存.
+- **状态行显示"终端继承没有生效"**: 本组合的 subprocess provider 拒绝了包装后的
+  `spawnTerminal` (例如服务实例被冻结). 命令侧的注入不受影响; 终端要继承就得等 provider
+  允许包装, 或者关掉 `terminalEnv` 免得状态行一直提示.
+- **终端里 `TERM` / `PAGER` 之类的值不对**: 检查是不是把它们写进了导入名单或自定义 env,
+  详见"终端继承".
 
 ## 开发
 
@@ -202,13 +248,14 @@ just names       # 只跑命名清单的离线校验
 
 源码在 `src/`: Host 半区是 `index.ts` (executor), `config.ts` (schema 与校验),
 `pipeline.ts` / `stage-runner.ts` / `stage-output.ts` (读取), `custom-env.ts` (自定义
-env), `shell-env-store.ts` (快照与状态机), `routes.ts` (两条路由); Client 半区在
-`src/client/`.
+env), `shell-env-store.ts` (快照与状态机), `terminal-env.ts` (终端包装),
+`routes.ts` (两条路由); Client 半区在 `src/client/`.
 
 测试分两层: `test/*.spec.ts` 是单元测试 (解析, 累积, 展开, 状态机, 路由, 命名,
-bundle 注册, 以及用真 patch 实现跑一遍 `cordis.patch.yml`), `test/executor.e2e.spec.ts`
-用真 provider 起一个最小组合, 验证环境真的进了子进程而 argv 没变 (本机起不了
-confinement runner 时, 沙箱那一项会显式跳过).
+bundle 注册, 终端包装, 以及用真 patch 实现跑一遍 `cordis.patch.yml`),
+`test/executor.e2e.spec.ts` 用真 provider 起一个最小组合, 验证环境真的进了子进程而
+argv 没变, 再用一个真实 PTY 验证同一件事 (本机起不了 confinement runner 或开不了
+PTY 时, 这两项会显式跳过).
 
 样式没有用 CSS Modules: 外部插件的 tsdown 构建里没有 CSS 预设, 所以卡片样式以
 `data-plugin-css` 标记注入一次 (与官方预设的去重标记同一个键), 只用 `--dsw-alias-*`

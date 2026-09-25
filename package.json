@@ -1,7 +1,7 @@
 {
   "name": "dsh-load-shell-env",
   "version": "0.1.0",
-  "description": "Load the user's own shell environment (fish/zsh/bash config) into DSH agent commands: a configurable ordered pipeline reads a NUL-separated environment snapshot, a whitelist plus a hand-written .env overlay inject it into every bash command, and a settings card offers the on/off switch, manual refresh and custom variables. 把用户自己的 shell 环境 (fish/zsh/bash 配置) 加载进 DSH agent 的命令: 可配置的有序流水线读出一份 NUL 分隔的环境快照, 经白名单与手写的 .env 覆盖层注入每条 bash 命令, 配置页提供总开关, 手动刷新与自定义变量.",
+  "description": "Load the user's own shell environment (fish/zsh/bash config) into DSH agent commands: a configurable ordered pipeline reads a NUL-separated environment snapshot, a whitelist plus a hand-written .env overlay inject it into every bash command and, behind a switch, into terminal processes, and a settings card offers the on/off switch, manual refresh and custom variables. 把用户自己的 shell 环境 (fish/zsh/bash 配置) 加载进 DSH agent 的命令: 可配置的有序流水线读出一份 NUL 分隔的环境快照, 经白名单与手写的 .env 覆盖层注入每条 bash 命令 (可选也交给终端进程), 配置页提供总开关, 手动刷新与自定义变量.",
   "type": "module",
   "main": "./lib/index.mjs",
   "exports": {

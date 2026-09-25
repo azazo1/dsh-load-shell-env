@@ -132,6 +132,17 @@ export function ShellEnvSettingsCard(props: ShellEnvSettingsCardProps): ReactNod
         onReset={() => { props.resetField('customEnv') }}
         {...overridden}
       />
+      <SwitchField
+        id="plugin-config-load-shell-env-terminal-env"
+        label={t('terminalEnv')}
+        hint={t('terminalEnvHint')}
+        checked={state.terminalEnv}
+        overridden={state.overridden.terminalEnv}
+        disabled={pipelineLocked}
+        onToggle={props.setTerminalEnv}
+        onReset={() => { props.resetField('terminalEnv') }}
+        {...overridden}
+      />
       <StatusBlock t={t} state={state} onRefresh={props.refresh} />
       <section className="dsh-lse-section" aria-labelledby="plugin-config-load-shell-env-terminal">
         <h3 className="dsh-lse-section-title" id="plugin-config-load-shell-env-terminal">{t('terminalSection')}</h3>
@@ -207,6 +218,9 @@ function StatusBlock(props: { t: Translate<ShellEnvLocaleKey>, state: ShellEnvCa
       {status.skippedSegments === undefined ? null : (
         <p className="dsh-lse-hint">{t('statusSkipped', { count: String(status.skippedSegments) })}</p>
       )}
+      {status.terminal?.enabled === true && !status.terminal.hooked ? (
+        <p className="dsh-lse-invalid">{t('statusTerminalUnavailable')}</p>
+      ) : null}
       {status.error === undefined ? null : (
         <p className="dsh-lse-invalid">
           {status.error.stage === undefined

@@ -31,6 +31,8 @@ export interface ShellEnvSettings {
   customEnv?: string
   envTimeoutMs?: number
   filterNoise?: boolean
+  /** 是否把注入层也交给终端进程. */
+  terminalEnv?: boolean
   /** executor: 单条命令的默认超时 (毫秒). */
   timeoutMs?: number
   /** executor: 每条流的输出上限 (字节). */
@@ -52,6 +54,7 @@ export interface ShellEnvOverrides {
   customEnv: boolean
   envTimeoutMs: boolean
   filterNoise: boolean
+  terminalEnv: boolean
   timeoutMs: boolean
   maxOutputBytes: boolean
 }
@@ -64,6 +67,8 @@ export interface ShellEnvCardState extends SettingsFormShell {
   customEnv: string
   envTimeoutMsText: string
   filterNoise: boolean
+  /** 注入层是否也交给终端进程. */
+  terminalEnv: boolean
   /** 哪些字段在 profile 的用户层里被覆盖过. */
   overridden: ShellEnvOverrides
   /** 启用的级里有空命令. */
@@ -114,6 +119,8 @@ export interface ShellEnvCardFace extends SettingsFormActions {
   editTimeoutText(text: string): void
   /** 开关输出容错. */
   setFilterNoise(next: boolean): void
+  /** 开关终端继承. */
+  setTerminalEnv(next: boolean): void
   /** 改 executor 的单条命令超时草稿. */
   editCommandTimeoutText(text: string): void
   /** 改 executor 的单流输出上限草稿. */
@@ -132,6 +139,7 @@ interface FieldValues {
   customEnv: string
   envTimeoutMsText: string
   filterNoise: boolean
+  terminalEnv: boolean
   timeoutMsText: string
   maxOutputBytesText: string
 }
@@ -198,6 +206,7 @@ export class ShellEnvSettingsForm {
       editCustomEnv: (text) => { this.setField('customEnv', text) },
       editTimeoutText: (text) => { this.setField('envTimeoutMsText', text) },
       setFilterNoise: (next) => { this.setField('filterNoise', next) },
+      setTerminalEnv: (next) => { this.setField('terminalEnv', next) },
       editCommandTimeoutText: (text) => { this.setField('timeoutMsText', text) },
       editMaxOutputBytesText: (text) => { this.setField('maxOutputBytesText', text) },
       edit: (field, text) => {
@@ -343,6 +352,7 @@ export class ShellEnvSettingsForm {
       case 'customEnv': return (value?.customEnv ?? '') as FieldValues[K]
       case 'envTimeoutMsText': return String(value?.envTimeoutMs ?? DEFAULT_ENV_TIMEOUT_MS) as FieldValues[K]
       case 'filterNoise': return (value?.filterNoise ?? false) as FieldValues[K]
+      case 'terminalEnv': return (value?.terminalEnv ?? true) as FieldValues[K]
       case 'timeoutMsText': return String(value?.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS) as FieldValues[K]
       case 'maxOutputBytesText': return String(value?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES) as FieldValues[K]
     }
@@ -360,6 +370,7 @@ export class ShellEnvSettingsForm {
       case 'customEnv': return (base?.customEnv ?? '') as FieldValues[K]
       case 'envTimeoutMsText': return String(base?.envTimeoutMs ?? DEFAULT_ENV_TIMEOUT_MS) as FieldValues[K]
       case 'filterNoise': return (base?.filterNoise ?? false) as FieldValues[K]
+      case 'terminalEnv': return (base?.terminalEnv ?? true) as FieldValues[K]
       case 'timeoutMsText': return String(base?.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS) as FieldValues[K]
       case 'maxOutputBytesText': return String(base?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES) as FieldValues[K]
     }
@@ -417,6 +428,7 @@ export class ShellEnvSettingsForm {
       customEnv,
       envTimeoutMsText: timeoutText,
       filterNoise: this.field('filterNoise'),
+      terminalEnv: this.field('terminalEnv'),
       timeoutMsText: commandTimeoutText,
       maxOutputBytesText: maxOutputText,
       overridden: {
@@ -426,6 +438,7 @@ export class ShellEnvSettingsForm {
         customEnv: this.userLayerHas('customEnv'),
         envTimeoutMs: this.userLayerHas('envTimeoutMsText'),
         filterNoise: this.userLayerHas('filterNoise'),
+        terminalEnv: this.userLayerHas('terminalEnv'),
         timeoutMs: this.userLayerHas('timeoutMsText'),
         maxOutputBytes: this.userLayerHas('maxOutputBytesText'),
       },
@@ -487,7 +500,7 @@ export class ShellEnvSettingsForm {
 function isFieldName(field: string): field is FieldName {
   return field === 'enabled' || field === 'stages' || field === 'importNames'
     || field === 'customEnv' || field === 'envTimeoutMsText' || field === 'filterNoise'
-    || field === 'timeoutMsText' || field === 'maxOutputBytesText'
+    || field === 'terminalEnv' || field === 'timeoutMsText' || field === 'maxOutputBytesText'
 }
 
 /** 草稿字段名对应的 profile patch 路径. */

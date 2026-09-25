@@ -37,6 +37,8 @@ export type ShellEnvLocaleKey =
   | 'envTimeoutInvalid'
   | 'filterNoise'
   | 'filterNoiseHint'
+  | 'terminalEnv'
+  | 'terminalEnvHint'
   | 'terminalSection'
   | 'commandTimeout'
   | 'commandTimeoutHint'
@@ -54,6 +56,7 @@ export type ShellEnvLocaleKey =
   | 'statusImported'
   | 'statusEmpty'
   | 'statusSkipped'
+  | 'statusTerminalUnavailable'
   | 'statusError'
   | 'refresh'
   | 'refreshing'
@@ -102,7 +105,9 @@ export const zh: Record<ShellEnvLocaleKey, string> = {
   envTimeoutInvalid: '请填一个正整数毫秒值.',
   filterNoise: '输出容错',
   filterNoiseHint: '遇到不符合 KEY=VALUE 约定的输出段时, 丢弃它并继续 (状态行会报告丢了几段), 而不是让这一级失败. 它只能救回"噪声黏在变量名前面"这种形态; 噪声如果糊进了值里, 任何解析器都看不出来, 只能从源头把消息改成写 stderr.',
-  terminalSection: '终端',
+  terminalEnv: '终端继承',
+  terminalEnvHint: '把上面这一层也交给终端进程: 界面右侧栏的内置终端, 以及 agent 的 terminal 工具起的持久 shell. 终端与命令侧同一套合并顺序, 注入层会盖过终端 backend 自己设置的变量, 所以不要把 TERM, PAGER, PS1, PROMPT_COMMAND 这类终端协议变量放进导入名单或自定义 env (PROMPT_COMMAND 被盖掉会让 terminal 工具卡住); 自定义 env 里的删除写法 (KEY=) 对终端不生效.',
+  terminalSection: '命令执行',
   commandTimeout: '命令超时 (毫秒)',
   commandTimeoutHint: '单条命令允许运行多久, 超时即终止.',
   maxOutputBytes: '单流输出上限 (字节)',
@@ -119,6 +124,7 @@ export const zh: Record<ShellEnvLocaleKey, string> = {
   statusImported: '已导入 {count} 个变量: {names}',
   statusEmpty: '没有导入任何变量.',
   statusSkipped: '读取时丢弃了 {count} 段不符合约定的输出 (输出容错已打开).',
+  statusTerminalUnavailable: '终端继承没有生效: 本组合的 subprocess provider 拒绝了包装后的 spawnTerminal, 终端进程仍然只拿到继承环境.',
   statusError: '第 {stage} 级失败: {message}',
   refresh: '刷新',
   refreshing: '读取中...',
@@ -161,7 +167,9 @@ export const en: Record<ShellEnvLocaleKey, string> = {
   envTimeoutInvalid: 'Enter a positive whole number of milliseconds.',
   filterNoise: 'Tolerate output noise',
   filterNoiseHint: 'Drop output segments that do not follow the KEY=VALUE convention and keep going (the status row reports how many were dropped) instead of failing the stage. It only recovers the "noise glued in front of a variable name" shape; noise written into a value is invisible to any parser, so fix the message at its source instead (write it to stderr).',
-  terminalSection: 'Shell',
+  terminalEnv: 'Inherit in terminals',
+  terminalEnvHint: 'Hand the layer above to terminal processes too: the built-in terminal in the right sidebar, and the persistent shell behind the agent terminal tools. Terminals merge it exactly as commands do, so it overrides what a terminal backend sets for itself; keep terminal-protocol names such as TERM, PAGER, PS1 and PROMPT_COMMAND out of the import list and the custom env (overriding PROMPT_COMMAND stalls the terminal tools), and note that the custom env removal form (KEY=) does not apply to terminals.',
+  terminalSection: 'Command execution',
   commandTimeout: 'Command timeout (ms)',
   commandTimeoutHint: 'How long one command may run before it is terminated.',
   maxOutputBytes: 'Output cap per stream (bytes)',
@@ -178,6 +186,7 @@ export const en: Record<ShellEnvLocaleKey, string> = {
   statusImported: 'Injected {count} variable(s): {names}',
   statusEmpty: 'No variables injected.',
   statusSkipped: 'Dropped {count} output segment(s) that did not follow the convention (output tolerance is on).',
+  statusTerminalUnavailable: 'Terminal inheritance is not active: the subprocess provider in this composition rejected a wrapped spawnTerminal, so terminals still see only the inherited environment.',
   statusError: 'Stage {stage} failed: {message}',
   refresh: 'Refresh',
   refreshing: 'Reading...',

@@ -10,7 +10,9 @@ for GUI applications: `PATH` is usually just `/usr/bin:/bin:/usr/sbin:/sbin`, so
 `pnpm`, `uv`, `cargo`, `rg` and `brew` are all missing inside agent commands, even though the
 integrated terminal looks fine (that one runs `fish -i`, which reads your config itself).
 This plugin reads that environment once and injects it into every bash command the agent
-runs, **without touching the command text**: argv stays `bash -c <command>`.
+runs, **without touching the command text**: argv stays `bash -c <command>`. The same
+environment can also be handed to terminal processes (the built-in terminal and the agent
+terminal tools); see "Terminal inheritance".
 
 ## What it does
 
@@ -23,12 +25,15 @@ runs, **without touching the command text**: argv stays `bash -c <command>`.
   default.
 - A **custom env**: a hand-written `.env`-style overlay with `$VAR` / `${VAR}` expansion and
   deletion.
+- A **terminal inheritance switch**: when on, the built-in terminal in the sidebar and the
+  agent terminal tools receive the same injection layer.
 - A **status row and manual refresh** on the settings card, showing when the last read
   happened, how long it took, which names are injected, and why a read failed.
 
 ## What it does not do
 
-- It does not touch the integrated terminal (it already runs your shell).
+- It does not configure terminal processes for you: terminal inheritance only hands them the
+  variables, while the shell inside keeps running your own configuration.
 - It does not change the agent loop, tool schemas or the system prompt, and exposes no tool
   to the model.
 - It persists no environment value: the snapshot lives in memory and the HTTP routes return
@@ -67,6 +72,8 @@ in the profile's `cordis.patch.yml` (the row id is `load-shell-env`):
       PATH=$PATH:$HOME/.local/bin
       GOPATH=$HOME/go
     envTimeoutMs: 10000
+    # whether terminal processes (built-in terminal and agent terminal tools) inherit this layer
+    terminalEnv: true
     # executor knobs below, same meaning as on the stock bash-sandbox row
     timeoutMs: 60000
 ```
@@ -79,6 +86,7 @@ in the profile's `cordis.patch.yml` (the row id is `load-shell-env`):
 | `customEnv` | `''` | `.env`-style text, applied after the pipeline. |
 | `envTimeoutMs` | `10000` | Timeout of **each** stage, in milliseconds. |
 | `filterNoise` | `false` | Output tolerance: drop segments that do not follow the convention and keep going (the status row reports how many were dropped) instead of failing the stage. |
+| `terminalEnv` | `true` | Hand the injection layer to terminal processes too (the built-in terminal and the agent terminal tools); see "Terminal inheritance". |
 
 ### Pipeline and accumulation
 
@@ -159,6 +167,42 @@ Note that layers 3 and 4 sit above layer 2: putting `TERM` / `PAGER` / `GIT_PAGE
 (commands may hang or produce dirty output). The plugin does not stop you, but it is worth
 knowing.
 
+### Terminal inheritance
+
+`terminalEnv` (on by default) decides whether the layer above is handed to terminal processes
+too, which covers two places:
+
+- the **built-in terminal** in the right sidebar (the terminal panel of the Desktop app);
+- the persistent shell behind the **agent terminal tools** (`terminal_open` / `terminal_send` /
+  ..., present only when a composition enables `tool-terminal` and `terminal-bash`).
+
+Neither path goes through `ctx.shell`: both call `ctx.subprocess.spawnTerminal()` directly and
+start from the provider's scrubbed inherited environment plus a `DSH_SESSION_ID`. So while the
+plugin is loaded it wraps the provider instance's `spawnTerminal`, merges the same injection
+layer into every terminal spawn's `spec.env`, and restores the original method on unload.
+
+The merge order matches the command side: the injection layer wins over what a terminal sets
+for itself. So keep terminal-protocol variables out of the import list and the custom env:
+
+| Do not inject | Consequence |
+| --- | --- |
+| `PROMPT_COMMAND` | `terminal-bash` uses it to tell when a command finished; overriding it leaves the terminal tools waiting for a prompt that never arrives |
+| `PS1`, `TERM` | Prompt and terminal type; changing them confuses output rendering and readiness detection |
+| `PAGER`, `GIT_PAGER` | dsh sets them to `cat` precisely so that a pager cannot wedge the terminal |
+
+Two more differences:
+
+- The custom env deletion form (`KEY=`) does **not** apply to terminals: the provider's terminal
+  spec takes string values only, and `undefined` carries no deletion meaning on the Windows
+  ConPTY path, so the plugin skips those entries.
+- When a composition's provider refuses the wrapper (a non-writable instance method), the plugin
+  only logs a warning and the status row reports that terminal inheritance is inactive; the
+  terminal falls back to the inherited environment instead of pretending otherwise.
+
+The wrapper targets the provider instance resolved from the plugin's own context. A remote
+execution world (a profile that composes `subprocess-ssh`) has its own provider and stays out of
+this layer: pushing this machine's shell environment into a remote terminal would be meaningless.
+
 ## Executor knobs and the official shell card
 
 `ctx.shell` is a **single-implementation** service, so the plugin has to stop the stock
@@ -168,9 +212,9 @@ One consequence: the official shell settings card (the **Terminal** entry under
 served, so once both are stopped it **retires itself**.
 
 The two controls it used to carry ("Command timeout (ms)" `timeoutMs` and "Output cap per
-stream (bytes)" `maxOutputBytes`) now live in a **"Shell" section at the bottom of this
-plugin's card**, with the same wording; "Reset" still clears the user layer and falls back to
-the composition layer (this plugin's bundle patch sets `timeoutMs: 60000`, and the schema
+stream (bytes)" `maxOutputBytes`) now live in a **"Command execution" section at the bottom of
+this plugin's card**, with the same wording; "Reset" still clears the user layer and falls back
+to the composition layer (this plugin's bundle patch sets `timeoutMs: 60000`, and the schema
 default for `maxOutputBytes` is `64000`). The other four executor fields (`cwd`,
 `maxTimeoutMs`, `maxSpillBytes`, `graceMs`) were never in the UI and remain patch-only:
 
@@ -208,6 +252,12 @@ exactly what they meant on the stock row:
 - **Reading happens in the Host process.** Once enabled, the pipeline executes your own
   shell configuration outside the workspace-write boundary (that boundary governs agent
   commands). This is the expected behaviour of an explicitly enabled switch.
+- **Terminal processes go through a runtime wrapper.** DSH leaves no extension point for "which
+  environment a terminal gets" (`ctx.subprocess` is a single-implementation service and the
+  terminal spec is assembled by its caller), so the plugin swaps `ctx.subprocess.spawnTerminal`
+  for its own wrapper while loaded and restores it on unload. It relies on a public contract
+  (`spawnTerminal(spec)`'s `spec.env` holds explicit entries merged after the provider's scrub),
+  so an upstream signature change fails type checking first instead of failing silently.
 
 ## Troubleshooting
 
@@ -234,6 +284,12 @@ exactly what they meant on the stock row:
   something else landed on stdout during the read (see the "Noise" note above). Move that
   message to stderr first; if the source cannot be changed, turn on "output tolerance" and
   save.
+- **The status row says terminal inheritance is inactive**: the composition's subprocess provider
+  rejected the wrapped `spawnTerminal` (a frozen service instance, for example). Command-side
+  injection is unaffected; either wait for a provider that accepts the wrapper, or turn
+  `terminalEnv` off so that the status row stops reporting it.
+- **`TERM` / `PAGER` look wrong inside a terminal**: check whether they ended up in the import
+  list or the custom env; see "Terminal inheritance".
 
 ## Development
 
@@ -249,14 +305,15 @@ just names       # the offline naming manifest validation alone
 Sources live in `src/`. The Host half is `index.ts` (the executor), `config.ts` (schema and
 validation), `pipeline.ts` / `stage-runner.ts` / `stage-output.ts` (reading),
 `custom-env.ts` (the custom env layer), `shell-env-store.ts` (snapshot and state machine),
-`routes.ts` (the two routes); the Client half is under `src/client/`.
+`terminal-env.ts` (the terminal wrapper), `routes.ts` (the two routes); the Client half is
+under `src/client/`.
 
 Tests come in two layers: `test/*.spec.ts` covers units (parsing, accumulation, expansion,
-the state machine, routes, naming, bundle registration, and `cordis.patch.yml` run through
-dsh's own patch implementation), while `test/executor.e2e.spec.ts` boots a minimal
-composition with the real providers and proves the environment reaches the child process
-while argv stays unchanged (its sandbox assertion skips explicitly where no confinement
-runner can start).
+the state machine, routes, naming, bundle registration, the terminal wrapper, and
+`cordis.patch.yml` run through dsh's own patch implementation), while
+`test/executor.e2e.spec.ts` boots a minimal composition with the real providers and proves the
+environment reaches the child process while argv stays unchanged, then does the same for a real
+PTY (both assertions skip explicitly where this host offers no confinement runner or no PTY).
 
 Styles are not CSS Modules: an external plugin's tsdown build has no CSS preset, so the card
 injects its styles once under the `data-plugin-css` marker (the same dedupe key the official

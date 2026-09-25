@@ -65,6 +65,7 @@ export const FIELD = {
   customEnv: 'customEnv',
   envTimeoutMs: 'envTimeoutMs',
   filterNoise: 'filterNoise',
+  terminalEnv: 'terminalEnv',
   // 下面两个是 executor 自己的旋钮, 由本插件的配置页代理显示.
   timeoutMs: 'timeoutMs',
   maxOutputBytes: 'maxOutputBytes',

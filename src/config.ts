@@ -7,7 +7,7 @@
  * 直接取 `LocalBashExecutor.Config.dict` 里的子 schema 拼进来, 默认值与 volatile
  * 标记都跟着原版走 (漂移由单测盯住, 见 test/config.spec.ts).
  *
- * 我们的五个字段全部 volatile: 改配置不重挂载插件, 避免卸载期间 `ctx.shell`
+ * 我们的六个字段全部 volatile: 改配置不重挂载插件, 避免卸载期间 `ctx.shell`
  * 短暂缺位; 刷新逻辑统一走 `loader/volatile-update`.
  * @module dsh-load-shell-env/config
  */
@@ -24,7 +24,7 @@ import type { StageConfig } from './shared/config.ts'
 
 export type { StageConfig } from './shared/config.ts'
 
-/** 插件的完整配置: executor 的六个旋钮 + 环境同步自己的五个字段. */
+/** 插件的完整配置: executor 的六个旋钮 + 环境同步自己的六个字段. */
 export interface ShellEnvConfig extends LocalBashConfig {
   /** 总开关; 关闭时插件不执行任何命令, 也不注入任何东西. */
   enabled: Volatile<boolean>
@@ -38,6 +38,8 @@ export interface ShellEnvConfig extends LocalBashConfig {
   envTimeoutMs: Volatile<number>
   /** 输出里不合约定的段是否按噪声丢弃 (默认关闭, 即严格模式). */
   filterNoise: Volatile<boolean>
+  /** 是否把注入层也交给终端进程 (界面内置终端与 agent 的 terminal 工具). */
+  terminalEnv: Volatile<boolean>
 }
 
 const BASE_FIELDS = LocalBashExecutor.Config.dict ?? {}
@@ -60,6 +62,7 @@ export const Config = z.object({
   customEnv: z.string().default('').volatile(),
   envTimeoutMs: z.number().default(DEFAULT_ENV_TIMEOUT_MS).volatile(),
   filterNoise: z.boolean().default(false).volatile(),
+  terminalEnv: z.boolean().default(true).volatile(),
 }) as unknown as z<ShellEnvConfig>
 
 /** 配置校验失败; 消息里带字段名, 便于对着 profile patch 查. */

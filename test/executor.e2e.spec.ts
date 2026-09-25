@@ -18,6 +18,7 @@ import { LocalSandboxProvider } from '@deepseek-ai/dsh-sandbox-local'
 import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { ShellExecution, ShellExecSpec, ShellRunResult } from '@deepseek-ai/dsh-shell'
+import type { SubprocessTerminalHandle } from '@deepseek-ai/dsh-subprocess'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ShellEnvExecutor } from '../src/index.ts'
@@ -130,5 +131,47 @@ describe('真实组合里的 ShellEnvExecutor', () => {
     const result = await run(shell, shell.resolve({ command: 'printf \'%s|%s\' "${LSE_MARK-unset}" "${HOME-unset}"' }))
     expect(result.exitCode).toBe(0)
     expect(result.stdout.text).toBe('custom|unset')
+  })
+
+  it('终端进程继承同一份注入层 (真实 PTY)', async (testContext) => {
+    const { ctx: context, workspace, shell } = await boot({
+      mode: 'danger-full-access',
+      config: { enabled: true, stages: STAGE, customEnv: 'LSE_TERMINAL_MARK=from-plugin' },
+    })
+    await shell.shellEnv.refresh()
+    // 包装落在真实 provider 的实例上 (而不是 prototype), 所以任何从 root 解析 subprocess
+    // 的消费者 (内置终端, terminal 工具) 都会经过它.
+    expect(Object.hasOwn(context.subprocess, 'spawnTerminal')).toBe(true)
+
+    let handle: SubprocessTerminalHandle
+    try {
+      handle = await context.subprocess.spawnTerminal({
+        argv: ['/bin/sh', '-c', 'printf "MARK=%s\\n" "$LSE_TERMINAL_MARK"; printf "PATH=%s\\n" "$PATH"'],
+        cwd: workspace,
+        rows: 24,
+        cols: 80,
+        terminalType: 'dumb',
+        graceMs: 1_000,
+      })
+    } catch (error: unknown) {
+      // 本机可能根本没有可用的 PTY 构建; 那与注入逻辑无关, 按环境不可用跳过.
+      testContext.skip(`no local PTY available here: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+    let text = ''
+    handle.output.on('data', (chunk: Buffer) => { text += chunk.toString('utf8') })
+    try {
+      await Promise.race([
+        Promise.all([
+          handle.done,
+          new Promise<void>((resolve) => { handle.output.on('end', () => { resolve() }) }),
+        ]),
+        new Promise((resolve) => setTimeout(resolve, 5_000)),
+      ])
+    } finally {
+      await handle.terminate()
+    }
+    expect(text).toContain('MARK=from-plugin')
+    expect(text).toContain('/injected')
   })
 })
