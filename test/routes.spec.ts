@@ -12,9 +12,17 @@ interface Route {
   handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
 }
 
-/** 造一个只带 effect 与 webServer 的宿主上下文. */
-function fakeContext(): { ctx: Context, routes: Map<string, Route> } {
+/**
+ * 造一个只带 effect, webServer 与 connection 的宿主上下文.
+ * @param rejection - connection 的裁决结果; undefined 表示放行, null 表示没有 connection 服务.
+ */
+function fakeContext(rejection: 401 | 403 | undefined | null = undefined): {
+  ctx: Context
+  routes: Map<string, Route>
+  rejections: () => number
+} {
   const routes = new Map<string, Route>()
+  const requestRejection = vi.fn((): 401 | 403 | undefined => (rejection === null ? undefined : rejection))
   const ctx = {
     effect: (register: () => unknown) => { register(); return () => {} },
     webServer: {
@@ -25,8 +33,10 @@ function fakeContext(): { ctx: Context, routes: Map<string, Route> } {
         return () => { routes.delete(key) }
       },
     },
+    // 惰性 get: 被测代码每次请求都会问一次, 缓存与否都能在这里看出来.
+    get: (name: string) => (name === 'connection' && rejection !== null ? { requestRejection } : undefined),
   }
-  return { ctx: ctx as unknown as Context, routes }
+  return { ctx: ctx as unknown as Context, routes, rejections: () => requestRejection.mock.calls.length }
 }
 
 /** 只实现被测代码用到的那几个成员的假请求. */
@@ -118,13 +128,39 @@ describe('mountShellEnvRoutes', () => {
     expect(refreshes()).toBe(1)
   })
 
-  it('带 sec-fetch-mode 时只接受 same-origin / cors', async () => {
+  it('不再按 sec-fetch-mode 单独设限: navigate 也放行', async () => {
     const { ctx, routes } = fakeContext()
     const { host, refreshes } = fakeHost()
     mountShellEnvRoutes(ctx, host)
     const route = routes.get(`exact:${REFRESH_PATH}`)!
     const headers = { 'content-type': 'application/json', [REFRESH_HEADER]: '1', 'sec-fetch-mode': 'navigate' }
-    expect((await call(route, 'POST', headers, '{}')).status).toBe(403)
+    expect((await call(route, 'POST', headers, '{}')).status).toBe(200)
+    expect(refreshes()).toBe(1)
+  })
+
+  it('认证拒绝时两条路由都按裁决的状态码结束, 且不触发读取', async () => {
+    for (const rejection of [401, 403] as const) {
+      const { ctx, routes, rejections } = fakeContext(rejection)
+      const { host, refreshes } = fakeHost()
+      mountShellEnvRoutes(ctx, host)
+      const status = await call(routes.get(`exact:${STATUS_PATH}`)!, 'GET')
+      expect(status.status).toBe(rejection)
+      const refreshHeaders = { 'content-type': 'application/json', [REFRESH_HEADER]: '1' }
+      const refresh = await call(routes.get(`exact:${REFRESH_PATH}`)!, 'POST', refreshHeaders, '{}')
+      expect(refresh.status).toBe(rejection)
+      // 每个请求都重新取一次服务 (惰性), 而不是挂载时缓存一次.
+      expect(rejections()).toBe(2)
+      expect(refreshes()).toBe(0)
+    }
+  })
+
+  it('取不到 connection 服务时 fail closed (503), 不静默放行', async () => {
+    const { ctx, routes } = fakeContext(null)
+    const { host, refreshes } = fakeHost()
+    mountShellEnvRoutes(ctx, host)
+    expect((await call(routes.get(`exact:${STATUS_PATH}`)!, 'GET')).status).toBe(503)
+    const headers = { 'content-type': 'application/json', [REFRESH_HEADER]: '1' }
+    expect((await call(routes.get(`exact:${REFRESH_PATH}`)!, 'POST', headers, '{}')).status).toBe(503)
     expect(refreshes()).toBe(0)
   })
 

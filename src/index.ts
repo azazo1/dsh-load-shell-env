@@ -103,7 +103,9 @@ export class ShellEnvExecutor extends SandboxBashExecutor {
     // 配置保存走 volatile 更新 (不重挂载), 由 store 决定清空还是重读.
     ctx.on('loader/volatile-update', () => { this.syncConfig() })
     // webServer 是可选依赖: 没有它的组合 (headless 等) 里插件照常注入环境, 只是没有配置页路由.
-    ctx.inject(['webServer'], (webCtx) => {
+    // connection 是路由的认证依赖: 两条 exact 路由会抢在 /api 前缀之前命中, 所以认证由
+    // handler 惰性调用它的 requestRejection 补上; 等它 provide 之后再挂路由.
+    ctx.inject(['webServer', 'connection'], (webCtx) => {
       mountShellEnvRoutes(webCtx, this.shellEnv)
     })
   }
